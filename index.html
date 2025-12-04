@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Hairstyle Try-On</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for mobile-first design and better visual feedback */
+        :root {
+            --primary-color: #f97316; /* Orange 500 */
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1f2937; /* Dark background */
+            color: #f3f4f6;
+            transition: background-color 0.3s;
+        }
+        .container-card {
+            background-color: #374151; /* Slightly lighter card background */
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            border-radius: 1.5rem; /* Large rounded corners */
+            overflow: hidden;
+        }
+        .control-button {
+            transition: all 0.2s ease;
+            box-shadow: 0 4px #c2410c;
+        }
+        .control-button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 5px #c2410c;
+        }
+        .control-button:active {
+            transform: translateY(3px);
+            box-shadow: 0 1px #c2410c;
+        }
+        /* Style for the video and result area */
+        #video-container, #result-container {
+            position: relative;
+            width: 100%;
+            padding-top: 100%; /* 1:1 Aspect Ratio container */
+            overflow: hidden;
+            background-color: #111827;
+            border-radius: 1rem;
+        }
+        video, canvas, #result-img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror the video for a natural selfie experience */
+        }
+        #result-img {
+            transform: scaleX(1); /* Do not mirror the result image */
+        }
+        .loading-spinner {
+            border-top-color: var(--primary-color);
+            border-right-color: transparent;
+            border-bottom-color: var(--primary-color);
+            border-left-color: var(--primary-color);
+        }
+        .hairstyle-card {
+            /* New styling for numbered cards */
+            @apply p-3 flex items-center justify-center text-center text-xl sm:text-2xl font-black bg-gray-600 rounded-xl cursor-pointer hover:bg-orange-500 transition duration-150;
+            aspect-ratio: 1 / 1;
+        }
+        .hairstyle-card.selected {
+            @apply ring-4 ring-orange-400 bg-orange-700 text-white;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8 min-h-screen flex items-start justify-center">
+
+    <div class="container-card w-full max-w-lg mx-auto p-6 space-y-6">
+        <h1 class="text-3xl font-extrabold text-center text-white mb-6">AI Hairstyle Studio</h1>
+
+        <!-- Camera/Selfie Area -->
+        <div id="video-area" class="space-y-4">
+            <div id="video-container">
+                <video id="webcam-feed" autoplay playsinline class="hidden"></video>
+                <canvas id="photo-canvas" class="hidden"></canvas>
+                <p id="camera-status" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center text-gray-400">
+                    Press "Start Camera" to begin.
+                </p>
+            </div>
+            
+            <div id="camera-controls" class="flex gap-4 justify-center">
+                <button onclick="startCamera()" id="start-btn" class="flex-1 px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl control-button">
+                    Start Camera
+                </button>
+                <button onclick="takeSelfie()" id="capture-btn" disabled class="flex-1 px-4 py-3 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded-xl control-button disabled:opacity-50 disabled:cursor-not-allowed">
+                    Take Selfie
+                </button>
+            </div>
+        </div>
+
+        <!-- Hairstyle Selection & Try-On Button -->
+        <div class="space-y-4 pt-4 border-t border-gray-600">
+            <h2 class="text-xl font-bold text-white">1. Select Style (1-21):</h2>
+            <p class="text-sm text-gray-400">Choose a number corresponding to an inspiration look, or type your own description.</p>
+            
+            <!-- Hairstyle Selection Grid (Responsive layout for more options) -->
+            <div id="hairstyle-selection" class="grid grid-cols-4 sm:grid-cols-5 gap-3">
+                <!-- Cards will be injected here by JavaScript -->
+            </div>
+
+            <h2 class="text-xl font-bold text-white mt-6">2. Confirm or Customize:</h2>
+            <p class="text-sm text-gray-400">The detailed AI prompt is below. Edit it to change color or details.</p>
+
+            <input type="text" id="hairstyle-prompt" placeholder="Or type a custom hairstyle (e.g., bright orange spiked hair)"
+                class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-orange-500 focus:border-orange-500" disabled>
+
+            <button onclick="tryHairstyle()" id="tryon-btn" disabled class="w-full px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold text-lg rounded-xl control-button disabled:opacity-50 disabled:cursor-not-allowed">
+                Try On Hairstyle
+            </button>
+        </div>
+
+        <!-- Result Area -->
+        <div id="result-area" class="space-y-4">
+            <h2 class="text-xl font-bold text-white mt-4">Virtual Try-On Result:</h2>
+            <div id="result-container">
+                <img id="result-img" src="https://placehold.co/500x500/0f172a/ffffff?text=Hairstyle+Result" alt="Hairstyle Result" class="rounded-lg object-contain">
+                <div id="loading-overlay" class="hidden absolute inset-0 bg-gray-900 bg-opacity-70 flex flex-col items-center justify-center space-y-4">
+                    <div class="animate-spin rounded-full h-12 w-12 border-4 border-t-4 loading-spinner"></div>
+                    <p class="text-white text-lg font-medium">Generating your new look...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Message/Error Box -->
+        <div id="message-box" class="mt-4 p-3 bg-yellow-900 border border-yellow-700 text-yellow-300 rounded-lg hidden"></div>
+
+    </div>
+
+    <script type="module">
+        // Global references
+        const video = document.getElementById('webcam-feed');
+        const canvas = document.getElementById('photo-canvas');
+        const resultImg = document.getElementById('result-img');
+        const startBtn = document.getElementById('start-btn');
+        const captureBtn = document.getElementById('capture-btn');
+        const tryonBtn = document.getElementById('tryon-btn');
+        const promptInput = document.getElementById('hairstyle-prompt');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const messageBox = document.getElementById('message-box');
+        const cameraStatus = document.getElementById('camera-status');
+        const selectionGrid = document.getElementById('hairstyle-selection');
+
+        let isSelfieCaptured = false;
+        let selectedPrompt = '';
+
+        // *** CRITICAL STEP: REPLACE THIS PLACEHOLDER WITH YOUR VERCEL PROXY URL ***
+        // Example: const PROXY_URL = 'https://looks-app-proxy.vercel.app/api/try-hairstyle';
+        const PROXY_URL = 'REPLACE_WITH_YOUR_VERCEL_PROXY_URL_HERE'; 
+        // **************************************************************************************************
+
+
+        // Predefined Hairstyle Options (Now expanded to 21)
+        const HAIRSTYLES = [
+            { id: 1, prompt: "Classic side-part haircut, medium length, high volume on top, natural dark brown color" },
+            { id: 2, prompt: "Short sides, textured top, messy spiky hair, medium brown color, cinematic lighting" },
+            { id: 3, prompt: "Slicked back hair with high shine finish, short sides, includes a neat, short beard" },
+            { id: 4, prompt: "Short, neat haircut with a side-swept fringe, low volume, natural dark brown color" },
+            { id: 5, prompt: "Combed back pompadour style, medium length on top, light stubble beard" },
+            { id: 6, prompt: "High volume textured quiff, pushed up and back, light brown color" },
+            { id: 7, prompt: "Smooth classic brush-up haircut with a defined side part, dark brown color, professional style" },
+            { id: 8, prompt: "High contrast side-swept hair with a sharp undercut and low fade" },
+            { id: 9, prompt: "High volume textured top, very sharp zero fade on the sides, defined hairline" },
+            { id: 10, prompt: "Long, wavy, shoulder-length blonde hair with beach wave texture" },
+            { id: 11, prompt: "Tight coiled afro, very short and well-defined, dark black color" },
+            { id: 12, prompt: "Bright neon pink buzz cut, very short and evenly shaved" },
+            { id: 13, prompt: "Shoulder-length bob cut, straight and sleek, vibrant purple color" },
+            { id: 14, prompt: "Man bun, dark hair pulled back high, shaved sides" },
+            { id: 15, prompt: "Classic military crew cut, very short all over" },
+            { id: 16, prompt: "Braids in a box braid pattern, long and dark, pulled back from the face" },
+            { id: 17, prompt: "Shaggy, layered mullet, dark brown color with natural texture" },
+            { id: 18, prompt: "Silver-gray metallic pixie cut, high-fashion editorial style" },
+            { id: 19, prompt: "Voluminous ringlet curls, medium length, auburn red color" },
+            { id: 20, prompt: "Bald head with a thick, well-groomed handlebar mustache" },
+            { id: 21, prompt: "High fade haircut with textured crew cut on top, sharp line-up, and a full, well-groomed beard" } 
+        ];
+
+        // --- Utility Functions ---
+
+        function showMessage(text, isError = false) {
+            messageBox.textContent = text;
+            messageBox.className = `mt-4 p-3 rounded-lg block ${isError ? 'bg-red-900 border border-red-700 text-red-300' : 'bg-green-900 border border-green-700 text-green-300'}`;
+            if (!text) messageBox.classList.add('hidden');
+        }
+
+        function setLoading(isLoading) {
+            loadingOverlay.classList.toggle('hidden', !isLoading);
+            tryonBtn.disabled = isLoading || !isSelfieCaptured || (!promptInput.value.trim() && !selectedPrompt);
+            promptInput.disabled = isLoading || !isSelfieCaptured;
+        }
+        
+        // Function to handle card selection
+        function selectHairstyle(cardElement, prompt) {
+            // Remove 'selected' class from all cards
+            document.querySelectorAll('.hairstyle-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+
+            // Add 'selected' class to the clicked card
+            cardElement.classList.add('selected');
+            
+            // Set the prompt input value and internal state
+            promptInput.value = prompt;
+            selectedPrompt = prompt;
+
+            // Enable try-on button if a selfie is ready
+            if (isSelfieCaptured) {
+                tryonBtn.disabled = false;
+            }
+        }
+
+        // Function to create the visual hairstyle cards
+        function renderHairstyleCards() {
+            HAIRSTYLES.forEach(style => {
+                const card = document.createElement('button');
+                card.type = 'button';
+                card.className = 'hairstyle-card';
+                card.innerHTML = `${style.id}`; // Display the number 1-21
+                card.onclick = () => selectHairstyle(card, style.prompt);
+                selectionGrid.appendChild(card);
+            });
+        }
+
+
+        // --- Webcam Handling ---
+
+        window.startCamera = async function() {
+            showMessage('');
+            isSelfieCaptured = false;
+            
+            try {
+                // Request access to the user's camera
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: "user", // Prefer front camera on mobile
+                        width: { ideal: 500 },
+                        height: { ideal: 500 }
+                    }
+                });
+                
+                video.srcObject = stream;
+                video.classList.remove('hidden');
+                canvas.classList.add('hidden'); // Ensure canvas is hidden if restarting
+                cameraStatus.classList.add('hidden');
+
+                // Wait for video metadata to load to set canvas size
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    captureBtn.disabled = false;
+                    startBtn.textContent = 'Retake Selfie';
+                    showMessage('Camera active. Say cheese!', false);
+                };
+            } catch (err) {
+                console.error("Error accessing camera:", err);
+                cameraStatus.textContent = 'Camera access denied or failed.';
+                showMessage('Could not start camera. Please ensure permissions are granted.', true);
+            }
+        }
+
+        window.takeSelfie = function() {
+            if (video.srcObject) {
+                const context = canvas.getContext('2d');
+                
+                // Draw the video frame onto the canvas (mirrored to match the video element's CSS)
+                context.save();
+                context.scale(-1, 1);
+                context.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+                context.restore();
+                
+                // Stop the video stream
+                video.srcObject.getTracks().forEach(track => track.stop());
+                video.classList.add('hidden');
+                canvas.classList.remove('hidden');
+
+                isSelfieCaptured = true;
+                captureBtn.disabled = true;
+                
+                // Enable prompt input and tryon if a selection was already made
+                promptInput.disabled = false;
+                tryonBtn.disabled = !promptInput.value.trim();
+
+                startBtn.textContent = 'Retake Selfie';
+                showMessage('Selfie captured! Now select or describe the hairstyle you want to try on.', false);
+            }
+        }
+
+        // --- Image Generation API (via Secure Proxy) ---
+
+        window.tryHairstyle = async function() {
+            const finalPrompt = promptInput.value.trim();
+
+            if (!isSelfieCaptured) {
+                showMessage('Please capture a selfie first.', true);
+                return;
+            }
+            if (finalPrompt === "") {
+                showMessage('Please select a hairstyle or enter a description.', true);
+                return;
+            }
+            // Check if PROXY_URL is still the placeholder
+            if (PROXY_URL.includes('REPLACE_WITH_YOUR_VERCEL_PROXY_URL_HERE')) {
+                showMessage('Deployment Error: Please replace the placeholder in the code with your actual Vercel proxy URL.', true);
+                return;
+            }
+            
+            setLoading(true);
+            showMessage('');
+            resultImg.src = "https://placehold.co/500x500/0f172a/ffffff?text=Generating+..."; // Placeholder during generation
+
+            // 1. Get the captured image data from the canvas
+            const fullBase64 = canvas.toDataURL('image/png');
+            // Remove the 'data:image/png;base64,' prefix for the API
+            const base64ImageData = fullBase64.split(',')[1];
+            
+            // 2. Construct the payload for the PROXY
+            const payload = {
+                image_data: base64ImageData,
+                prompt: finalPrompt
+            };
+
+            const maxRetries = 5;
+            let delay = 1000;
+            
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    // Call the Secure Backend Proxy
+                    const response = await fetch(PROXY_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 429 && i < maxRetries - 1) {
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            delay *= 2;
+                            continue;
+                        }
+                        const errorText = await response.text();
+                        throw new Error(`Proxy call failed with status: ${response.status} - ${errorText.substring(0, 100)}...`);
+                    }
+
+                    const result = await response.json();
+                    const base64Data = result?.image_data; // Assuming proxy returns { image_data: 'base64...' }
+                    const errorMessage = result?.error;
+
+
+                    if (base64Data) {
+                        const imageUrl = `data:image/png;base64,${base64Data}`;
+                        resultImg.src = imageUrl;
+                        showMessage('Success! Check out your new look.', false);
+                        setLoading(false);
+                        return; // Exit loop on success
+                    } else if (errorMessage) {
+                         throw new Error(errorMessage);
+                    } else {
+                        throw new Error("Proxy response did not contain valid image data.");
+                    }
+
+                } catch (error) {
+                    if (i === maxRetries - 1) {
+                        console.error("Final API call failed after retries:", error);
+                        showMessage(`Hairstyle generation failed: ${error.message}. Please check your proxy server logs.`, true);
+                        resultImg.src = "https://placehold.co/500x500/0f172a/ffffff?text=ERROR";
+                        setLoading(false);
+                        return;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                }
+            }
+        }
+
+        // Initialize on window load to ensure all elements are ready
+        window.onload = () => {
+            renderHairstyleCards();
+            
+            // Event listener for custom prompt input changes
+            promptInput.addEventListener('input', () => {
+                // Re-enable/disable tryon button based on text input content
+                tryonBtn.disabled = !isSelfieCaptured || promptInput.value.trim() === "";
+
+                // Remove selection highlight if the user starts typing custom text
+                if (promptInput.value.trim() !== selectedPrompt) {
+                     document.querySelectorAll('.hairstyle-card').forEach(card => {
+                        card.classList.remove('selected');
+                    });
+                }
+            });
+            
+            // Re-map the start button to also act as a retake button if the camera is off
+            startBtn.addEventListener('click', () => {
+                if (video.srcObject) {
+                    // This handles stopping the stream if it's already running and user clicks "Restart"
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                }
+                // Clear any previous state and restart the camera
+                video.classList.add('hidden');
+                canvas.classList.add('hidden');
+                cameraStatus.classList.remove('hidden');
+                captureBtn.disabled = true;
+                tryonBtn.disabled = true;
+                promptInput.disabled = true;
+                startCamera();
+            });
+        };
+    </script>
+
+</body>
+</html>
