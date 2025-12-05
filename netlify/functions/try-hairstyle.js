@@ -5,8 +5,8 @@ import { GoogleGenAI } from '@google/genai';
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // Image generation model used for hair try-on
-// *** FIX: Changed from 'imagen-4.0-generate-001' to the supported multimodal model 'gemini-2.5-flash' ***
-const MODEL_NAME = 'gemini-2.5-flash';
+// *** FIX: Changed from 'gemini-2.5-flash' to the dedicated image generation model 'gemini-2.5-flash-image-preview' ***
+const MODEL_NAME = 'gemini-2.5-flash-image-preview';
 
 /**
  * Netlify Function handler.
@@ -80,7 +80,6 @@ exports.handler = async (event, context) => {
         };
 
         // 4. Call the image generation API
-        // *** FIX: Combine text and image into the 'contents' array ***
         const apiResponse = await ai.models.generateContent({
             model: MODEL_NAME,
             contents: [
@@ -91,16 +90,16 @@ exports.handler = async (event, context) => {
                     ]
                 }
             ],
-            // Remove generationConfig.prompt as it's now in contents
+            // generationConfig is necessary here to instruct the model to return an image
             generationConfig: {
-                // The structure for gemini-2.5-flash is different; it doesn't take numberOfImages, 
-                // outputMimeType, or aspectRatio in generationConfig for content generation.
-                // We trust the model to return the manipulated image based on the prompt.
+                // IMPORTANT: Requesting image output modality explicitly
+                responseMimeType: 'image/png', 
+                responseModality: ['TEXT', 'IMAGE']
             }
         });
         
         // 5. Extract the base64 image data from the response
-        // Note: The response structure for the Gemini model is different from the Imagen structure.
+        // Note: The response structure for this model can still be tricky. We use the same robust extractor.
         const candidate = apiResponse.candidates?.[0];
         const generatedPart = candidate?.content?.parts?.find(p => p.inlineData && p.inlineData.mimeType.startsWith('image/'));
 
