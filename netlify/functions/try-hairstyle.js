@@ -5,7 +5,8 @@ import { GoogleGenAI } from '@google/genai';
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // Image generation model used for hair try-on
-const MODEL_NAME = 'imagen-4.0-generate-001';
+// *** FIX: Changed from 'imagen-4.0-generate-001' to the supported multimodal model 'gemini-2.5-flash' ***
+const MODEL_NAME = 'gemini-2.5-flash';
 
 /**
  * Netlify Function handler.
@@ -92,26 +93,27 @@ exports.handler = async (event, context) => {
             ],
             // Remove generationConfig.prompt as it's now in contents
             generationConfig: {
-                numberOfImages: 1,
-                outputMimeType: 'image/png',
-                aspectRatio: '1:1'
+                // The structure for gemini-2.5-flash is different; it doesn't take numberOfImages, 
+                // outputMimeType, or aspectRatio in generationConfig for content generation.
+                // We trust the model to return the manipulated image based on the prompt.
             }
         });
         
         // 5. Extract the base64 image data from the response
-        // Note: The SDK's response structure for Imagen is slightly different from standard Gemini models.
-        const generatedImage = apiResponse.generatedImages?.[0];
+        // Note: The response structure for the Gemini model is different from the Imagen structure.
+        const candidate = apiResponse.candidates?.[0];
+        const generatedPart = candidate?.content?.parts?.find(p => p.inlineData && p.inlineData.mimeType.startsWith('image/'));
 
-        if (!generatedImage || !generatedImage.image || !generatedImage.image.imageBytes) {
+        if (!generatedPart || !generatedPart.inlineData || !generatedPart.inlineData.data) {
             console.error("LOG 3: AI failed to return an image or response was malformed.");
             return {
                 statusCode: 500,
-                body: JSON.stringify({ error: 'AI failed to return an image. Try a different prompt.' }),
+                body: JSON.stringify({ error: 'AI failed to return an image. Try a different prompt, or ensure the image is clear.' }),
                 headers,
             };
         }
 
-        const base64Image = generatedImage.image.imageBytes;
+        const base64Image = generatedPart.inlineData.data;
 
         // *** NEW LOG ADDED HERE ***
         console.log("LOG 4: Image generated successfully. Returning data.");
