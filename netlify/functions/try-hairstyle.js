@@ -70,20 +70,28 @@ exports.handler = async (event, context) => {
         // 2. Construct the full generation prompt
         const fullPrompt = `Change the hairstyle and color of the person in the input image to: "${prompt}". Preserve the person's face, features, lighting, and clothing exactly as they are. This is a high-quality, realistic photo manipulation.`;
         
-        console.log(`Received request with prompt: ${fullPrompt.substring(0, 50)}...`);
-
         // 3. Define the image data structure for the API call
-        const image = {
-            imageBytes: imageData,
-            mimeType: 'image/png' // Assuming frontend provides PNG data
+        const imagePart = {
+            inlineData: {
+                data: imageData,
+                mimeType: 'image/png' // Assuming frontend provides PNG data
+            }
         };
-        
+
         // 4. Call the image generation API
+        // *** FIX: Combine text and image into the 'contents' array ***
         const apiResponse = await ai.models.generateContent({
             model: MODEL_NAME,
-            contents: [image],
+            contents: [
+                {
+                    parts: [
+                        { text: fullPrompt }, // The text prompt
+                        imagePart           // The image data
+                    ]
+                }
+            ],
+            // Remove generationConfig.prompt as it's now in contents
             generationConfig: {
-                prompt: fullPrompt,
                 numberOfImages: 1,
                 outputMimeType: 'image/png',
                 aspectRatio: '1:1'
@@ -91,17 +99,19 @@ exports.handler = async (event, context) => {
         });
         
         // 5. Extract the base64 image data from the response
-        const generatedImage = apiResponse.generatedImages[0];
-        const base64Image = generatedImage.image.imageBytes;
+        // Note: The SDK's response structure for Imagen is slightly different from standard Gemini models.
+        const generatedImage = apiResponse.generatedImages?.[0];
 
-        if (!base64Image) {
-            console.error("LOG 3: AI failed to return an image.");
+        if (!generatedImage || !generatedImage.image || !generatedImage.image.imageBytes) {
+            console.error("LOG 3: AI failed to return an image or response was malformed.");
             return {
                 statusCode: 500,
                 body: JSON.stringify({ error: 'AI failed to return an image. Try a different prompt.' }),
                 headers,
             };
         }
+
+        const base64Image = generatedImage.image.imageBytes;
 
         // *** NEW LOG ADDED HERE ***
         console.log("LOG 4: Image generated successfully. Returning data.");
